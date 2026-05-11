@@ -1,0 +1,68 @@
+name: Build and Deploy to EKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: kdavis-devops-app
+  EKS_CLUSTER: kdavis-eks-cluster
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    name: Build, Push, Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::402916653765:role/GitHubActionsEKSRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t $ECR_REPOSITORY ./app
+
+      - name: Tag and push image to ECR
+        run: |
+          ECR_URI=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+          docker tag $ECR_REPOSITORY:latest $ECR_URI:latest
+          docker tag $ECR_REPOSITORY:latest $ECR_URI:${{ github.sha }}
+          docker push $ECR_URI:latest
+          docker push $ECR_URI:${{ github.sha }}
+          echo "IMAGE_URI=$ECR_URI:${{ github.sha }}" >> $GITHUB_ENV
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ env.EKS_CLUSTER }}
+
+      - name: Update deployment image
+        run: |
+          kubectl set image deployment/kdavis-app \
+            kdavis-app=${{ env.IMAGE_URI }} \
+            --record
+
+      - name: Verify rollout
+        run: |
+          kubectl rollout status deployment/kdavis-app --timeout=120s
+
+      - name: Get service endpoint
+        run: |
+          kubectl get svc kdavis-app-service
