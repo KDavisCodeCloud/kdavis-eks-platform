@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kdavis-app
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kdavis-app
+  template:
+    metadata:
+      labels:
+        app: kdavis-app
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "false"
+        instrumentation.opentelemetry.io/inject-nodejs: "false"
+        instrumentation.opentelemetry.io/inject-dotnet: "false"
+        instrumentation.opentelemetry.io/inject-python: "false"
+    spec:
+      containers:
+        - name: kdavis-app
+          image: 402916653765.dkr.ecr.us-east-1.amazonaws.com/kdavis-devops-app:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: APP_ENV
+              valueFrom:
+                secretKeyRef:
+                  name: kdavis-app-secret
+                  key: APP_ENV
+            - name: APP_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kdavis-app-secret
+                  key: APP_KEY
+          volumeMounts:
+            - name: secrets-store
+              mountPath: "/mnt/secrets"
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "250m"
+            limits:
+              memory: "128Mi"
+              cpu: "500m"
+      volumes:
+        - name: secrets-store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "kdavis-app-secrets"
