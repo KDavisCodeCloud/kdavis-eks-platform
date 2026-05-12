@@ -3,7 +3,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "KDavis DevOps Platform - EKS Deployment", 200
+    return "KDavis DevOps Platform - EKS Deployment | Automated via GitHub Actions", 200
 
 @app.route("/health")
 def health():
